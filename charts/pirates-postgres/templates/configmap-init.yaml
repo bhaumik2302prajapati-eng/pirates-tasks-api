@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pirates-lib.fullname" . }}-init
+  labels:
+    {{- include "pirates-lib.labels" . | nindent 4 }}
+data:
+  10-create-tasks-db.sh: |
+    #!/bin/bash
+    set -e
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<SQL
+    CREATE ROLE tasks LOGIN PASSWORD '${TASKS_DB_PASSWORD}';
+    CREATE DATABASE tasks OWNER tasks;
+    SQL

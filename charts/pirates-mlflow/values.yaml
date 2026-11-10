@@ -1,0 +1,39 @@
+replicaCount: 1
+image:
+  repository: piratesmlopsacrtjxms.azurecr.io/pirates-mlflow
+  tag: "2.22.5"
+  pullPolicy: Always
+service:
+  type: ClusterIP
+  port: 5000
+  targetPort: 5000
+command: ["mlflow", "server"]
+args:
+  - --host=0.0.0.0
+  - --port=5000
+  - --backend-store-uri=$(BACKEND_STORE_URI)
+  - --artifacts-destination=wasbs://pirates-mlflow-artifacts@piratesmlflowtjxms.blob.core.windows.net/
+  - --serve-artifacts
+env:
+  - name: BACKEND_STORE_URI
+    valueFrom:
+      secretKeyRef:
+        name: pirates-mlflow-secret
+        key: backend-store-uri
+  - name: AZURE_STORAGE_CONNECTION_STRING
+    valueFrom:
+      secretKeyRef:
+        name: pirates-mlflow-secret
+        key: azure-conn-string
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi

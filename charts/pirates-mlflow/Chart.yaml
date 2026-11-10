@@ -1,0 +1,9 @@
+apiVersion: v2
+name: pirates-mlflow
+description: MLflow tracking server and model registry for Pirates MLFlowOps
+version: 0.1.0
+appVersion: "2.22.5"
+dependencies:
+  - name: pirates-lib
+    version: 0.1.0
+    repository: file://../pirates-lib

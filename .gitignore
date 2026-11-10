@@ -5,3 +5,8 @@ venv/
 .venv/
 *.egg-info/
 dist/
+infra/terraform/.terraform/
+infra/terraform/*.tfstate*
+infra/terraform/terraform.tfvars
+charts/*/charts/
+charts/*/Chart.lock

@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "pirates-lib.fullname" . }}
+  labels:
+    {{- include "pirates-lib.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "pirates-lib.fullname" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "pirates-lib.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "pirates-lib.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: postgres
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          ports:
+            - name: postgres
+              containerPort: {{ .Values.service.targetPort }}
+          env:
+            - name: POSTGRES_USER
+              value: mlflow
+            - name: POSTGRES_DB
+              value: mlflow
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pirates-postgres-secret
+                  key: mlflow-password
+            - name: TASKS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pirates-postgres-secret
+                  key: tasks-password
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "mlflow", "-d", "mlflow"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: init
+          configMap:
+            name: {{ include "pirates-lib.fullname" . }}-init
+            defaultMode: 0555
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.storage }}

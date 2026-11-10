@@ -1,0 +1,15 @@
+image:
+  repository: postgres
+  tag: 16-alpine
+service:
+  type: ClusterIP
+  port: 5432
+  targetPort: 5432
+  portName: postgres
+storage: 5Gi
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 512Mi
