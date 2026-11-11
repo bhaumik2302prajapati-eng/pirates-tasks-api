@@ -1,4 +1,4 @@
-replicaCount: 2
+replicaCount: 1
 image:
   repository: piratesmlopsacrtjxms.azurecr.io/pirates-model-api
   tag: "f6a03d6"
@@ -12,6 +12,6 @@ env:
   - name: POLL_SECONDS
     value: "60"
 autoscaling:
-  minReplicas: 2
+  minReplicas: 1
   maxReplicas: 3
   targetCPU: 70
