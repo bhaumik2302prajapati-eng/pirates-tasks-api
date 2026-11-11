@@ -1,0 +1,8 @@
+apiVersion: v2
+name: pirates-model-api
+description: Model serving API for Pirates MLFlowOps
+version: 0.1.0
+dependencies:
+  - name: pirates-lib
+    version: 0.1.0
+    repository: file://../pirates-lib
