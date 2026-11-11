@@ -1,0 +1,21 @@
+image:
+  repository: changeme
+  tag: changeme
+backoffLimit: 3
+spot:
+  enabled: false      # set true once the Spot pool exists
+script: "python model/generate_data.py && python model/train.py"
+env:
+  - name: MLFLOW_TRACKING_URI
+    value: http://pirates-mlflow:5000
+  - name: DATABASE_URL
+    valueFrom:
+      secretKeyRef:
+        name: pirates-train-secret
+        key: database-url
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    memory: 1Gi
