@@ -1,0 +1,167 @@
+name: pirates-mlops-pipeline
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "gitops/**"
+      - "**.md"
+      - "docs/**"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: write
+
+concurrency:
+  group: pirates-pipeline
+  cancel-in-progress: false
+
+env:
+  RESOURCE_GROUP: rg-pirates-mlops
+  AKS_NAME: aks-pirates-mlops
+  ACR_NAME: ${{ vars.ACR_NAME }}
+
+jobs:
+  train:
+    name: 1. Train on AKS
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.latest.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Connect to AKS
+        run: az aks get-credentials -g "$RESOURCE_GROUP" -n "$AKS_NAME" --admin --overwrite-existing
+      - name: Build and push training image
+        run: |
+          TAG=${GITHUB_SHA::7}
+          az acr login --name "$ACR_NAME"
+          docker build -f images/train/Dockerfile -t "$ACR_NAME.azurecr.io/pirates-train:$TAG" .
+          docker push "$ACR_NAME.azurecr.io/pirates-train:$TAG"
+      - name: Run training Job
+        run: |
+          TAG=${GITHUB_SHA::7}
+          REL="pirates-train-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "REL=$REL" >> "$GITHUB_ENV"
+          helm dependency update charts/pirates-train-job
+          helm upgrade --install "$REL" charts/pirates-train-job -n pirates-mlops \
+            --set image.repository="$ACR_NAME.azurecr.io/pirates-train" --set image.tag="$TAG"
+          for i in $(seq 1 90); do
+            C=$(kubectl -n pirates-mlops get job "$REL" -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}')
+            F=$(kubectl -n pirates-mlops get job "$REL" -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}')
+            [ "$C" = "True" ] && echo "training job complete" && exit 0
+            [ "$F" = "True" ] && echo "training job FAILED" && exit 1
+            sleep 10
+          done
+          echo "training job timed out"; exit 1
+      - name: Training logs (password masked)
+        if: always()
+        run: |
+          kubectl -n pirates-mlops logs "job/$REL" --tail=60 2>&1 | sed -E 's#(://[^:/]+:)[^@]+@#\1***@#' || true
+      - name: Remove training release
+        if: always()
+        run: helm -n pirates-mlops uninstall "$REL" || true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Find the new model version
+        id: latest
+        run: |
+          pip install -q mlflow-skinny==2.22.5
+          bash scripts/mlflow_cmd.sh latest
+
+  deploy-staging:
+    name: 2. Promote and deploy to staging
+    needs: train
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      VERSION: ${{ needs.train.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Connect to AKS
+        run: az aks get-credentials -g "$RESOURCE_GROUP" -n "$AKS_NAME" --admin --overwrite-existing
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Quality gate, then alias "staging"
+        run: |
+          pip install -q mlflow-skinny==2.22.5
+          bash scripts/mlflow_cmd.sh gate --version "$VERSION" --metric f1_macro --min 0.7
+          bash scripts/mlflow_cmd.sh set-alias --alias staging --version "$VERSION"
+      - name: Build and push serving image
+        run: |
+          TAG=${GITHUB_SHA::7}
+          az acr login --name "$ACR_NAME"
+          docker build -t "$ACR_NAME.azurecr.io/pirates-model-api:$TAG" serving
+          docker push "$ACR_NAME.azurecr.io/pirates-model-api:$TAG"
+      - name: Commit the staging image tag to Git
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          bash scripts/gitops_set_tag.sh staging "${GITHUB_SHA::7}"
+      - name: Wait for ArgoCD to roll out staging
+        run: |
+          kubectl -n argocd annotate application pirates-model-api-staging argocd.argoproj.io/refresh=hard --overwrite
+          WANT="$ACR_NAME.azurecr.io/pirates-model-api:${GITHUB_SHA::7}"
+          for i in $(seq 1 40); do
+            HAVE=$(kubectl -n pirates-staging get deploy pirates-model-api -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
+            [ "$HAVE" = "$WANT" ] && break
+            sleep 10
+          done
+          [ "$HAVE" = "$WANT" ] || { echo "ArgoCD did not apply $WANT"; exit 1; }
+          kubectl -n pirates-staging rollout status deploy/pirates-model-api --timeout=300s
+      - name: Smoke test staging
+        run: bash scripts/smoke_test.sh pirates-staging "$VERSION"
+
+  deploy-production:
+    name: 3. Approve and deploy to production
+    needs: [train, deploy-staging]
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      VERSION: ${{ needs.train.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Connect to AKS
+        run: az aks get-credentials -g "$RESOURCE_GROUP" -n "$AKS_NAME" --admin --overwrite-existing
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Alias "production" for the version that passed staging
+        run: |
+          pip install -q mlflow-skinny==2.22.5
+          bash scripts/mlflow_cmd.sh set-alias --alias production --version "$VERSION"
+      - name: Commit the production image tag to Git
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          bash scripts/gitops_set_tag.sh production "${GITHUB_SHA::7}"
+      - name: Wait for ArgoCD to roll out production
+        run: |
+          kubectl -n argocd annotate application pirates-model-api-production argocd.argoproj.io/refresh=hard --overwrite
+          WANT="$ACR_NAME.azurecr.io/pirates-model-api:${GITHUB_SHA::7}"
+          for i in $(seq 1 40); do
+            HAVE=$(kubectl -n pirates-production get deploy pirates-model-api -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
+            [ "$HAVE" = "$WANT" ] && break
+            sleep 10
+          done
+          [ "$HAVE" = "$WANT" ] || { echo "ArgoCD did not apply $WANT"; exit 1; }
+          kubectl -n pirates-production rollout status deploy/pirates-model-api --timeout=300s
+      - name: Smoke test production
+        run: bash scripts/smoke_test.sh pirates-production "$VERSION"
