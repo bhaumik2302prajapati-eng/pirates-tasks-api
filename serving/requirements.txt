@@ -1,0 +1,7 @@
+mlflow==2.22.5
+sqlalchemy==2.0.30
+scikit-learn==1.9.1
+pandas
+fastapi
+uvicorn
+prometheus-client
