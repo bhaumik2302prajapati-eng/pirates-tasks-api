@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: pirates-model-api-production
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/bhaumik2302prajapati-eng/pirates-tasks-api.git
+    targetRevision: main
+    path: charts/pirates-model-api
+    helm:
+      releaseName: pirates-model-api
+      valueFiles:
+        - ../../gitops/envs/production/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: pirates-production
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas

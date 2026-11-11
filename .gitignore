@@ -9,7 +9,6 @@ infra/terraform/.terraform/
 infra/terraform/*.tfstate*
 infra/terraform/terraform.tfvars
 charts/*/charts/
-charts/*/Chart.lock
 mlartifacts/
 mlruns/
 mlflow.db

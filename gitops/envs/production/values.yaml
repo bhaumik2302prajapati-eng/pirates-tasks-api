@@ -1,0 +1,17 @@
+replicaCount: 2
+image:
+  repository: piratesmlopsacrtjxms.azurecr.io/pirates-model-api
+  tag: "f6a03d6"
+env:
+  - name: MLFLOW_TRACKING_URI
+    value: http://pirates-mlflow.pirates-mlops:5000
+  - name: MODEL_NAME
+    value: task-priority-classifier
+  - name: MODEL_ALIAS
+    value: production
+  - name: POLL_SECONDS
+    value: "60"
+autoscaling:
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPU: 70
