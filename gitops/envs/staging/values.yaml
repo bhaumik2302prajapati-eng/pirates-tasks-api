@@ -1,7 +1,7 @@
 replicaCount: 1
 image:
   repository: piratesmlopsacrtjxms.azurecr.io/pirates-model-api
-  tag: "216b448"
+  tag: "a9274df"
 env:
   - name: MLFLOW_TRACKING_URI
     value: http://pirates-mlflow.pirates-mlops:5000
