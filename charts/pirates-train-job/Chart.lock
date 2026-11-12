@@ -1,0 +1,6 @@
+dependencies:
+- name: pirates-lib
+  repository: file://../pirates-lib
+  version: 0.1.0
+digest: sha256:05133b17b442d5b1d48349a61f2d87f750c264cfd051c633b359784a7686bcc8
+generated: "2026-11-11T09:49:04.597427397+01:00"
