@@ -1,0 +1,17 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: pirates-model-api
+  labels:
+    app.kubernetes.io/part-of: pirates-mlflowops
+spec:
+  namespaceSelector:
+    matchNames:
+      {{- toYaml .Values.namespaces | nindent 6 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pirates-model-api
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

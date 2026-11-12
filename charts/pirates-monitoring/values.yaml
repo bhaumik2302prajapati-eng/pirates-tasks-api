@@ -1,0 +1,4 @@
+namespaces:
+  - pirates-staging
+  - pirates-production
+errorRateThreshold: 0.05

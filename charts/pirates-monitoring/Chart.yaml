@@ -1,0 +1,4 @@
+apiVersion: v2
+name: pirates-monitoring
+description: ServiceMonitor, alert rules and Grafana dashboard for Pirates MLFlowOps
+version: 0.1.0

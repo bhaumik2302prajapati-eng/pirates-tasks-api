@@ -1,0 +1,29 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: pirates-model-api-alerts
+  labels:
+    app.kubernetes.io/part-of: pirates-mlflowops
+spec:
+  groups:
+    - name: pirates-model-api
+      rules:
+        - alert: PiratesPredictionErrorRateHigh
+          expr: |
+            (sum by (namespace) (rate(pirates_prediction_requests_total{status="error"}[5m])) or sum by (namespace) (rate(pirates_prediction_requests_total[5m])) * 0)
+              /
+            sum by (namespace) (rate(pirates_prediction_requests_total[5m]))
+              > {{ .Values.errorRateThreshold }}
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Prediction error rate above {{ .Values.errorRateThreshold }} (ratio) in {{ "{{ $labels.namespace }}" }}"
+            description: "Error rate is {{ "{{ $value | humanizePercentage }}" }} over the last 5 minutes."
+        - alert: PiratesModelApiDown
+          expr: up{job=~".*pirates-model-api.*"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "pirates-model-api target is down in {{ "{{ $labels.namespace }}" }}"
